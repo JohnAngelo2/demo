@@ -1,0 +1,278 @@
+import pygame
+import random
+
+# Initialize pygame
+pygame.init()
+
+# Colors
+BLACK = (0, 0, 0)
+WHITE = (255, 255, 255)
+GRAY = (128, 128, 128)
+COLORS = [
+    (0, 255, 255),  # I - Cyan
+    (0, 0, 255),    # J - Blue
+    (255, 165, 0),  # L - Orange
+    (255, 255, 0),  # O - Yellow
+    (0, 255, 0),    # S - Green
+    (128, 0, 128),  # T - Purple
+    (255, 0, 0)     # Z - Red
+]
+
+# Game settings
+BLOCK_SIZE = 30
+GRID_WIDTH = 10
+GRID_HEIGHT = 20
+SCREEN_WIDTH = BLOCK_SIZE * (GRID_WIDTH + 6)
+SCREEN_HEIGHT = BLOCK_SIZE * GRID_HEIGHT
+GAME_AREA_LEFT = BLOCK_SIZE
+
+# Tetrimino shapes
+SHAPES = [
+    [[1, 1, 1, 1]],  # I
+    
+    [[1, 0, 0],
+     [1, 1, 1]],     # J
+     
+    [[0, 0, 1],
+     [1, 1, 1]],     # L
+     
+    [[1, 1],
+     [1, 1]],        # O
+     
+    [[0, 1, 1],
+     [1, 1, 0]],      # S
+     
+    [[0, 1, 0],
+     [1, 1, 1]],      # T
+     
+    [[1, 1, 0],
+     [0, 1, 1]]       # Z
+]
+
+# Create the screen
+screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+pygame.display.set_caption("Tetris")
+
+clock = pygame.time.Clock()
+
+class Tetrimino:
+    def __init__(self):
+        self.shape_idx = random.randint(0, len(SHAPES) - 1
+        self.shape = SHAPES[self.shape_idx]
+        self.color = COLORS[self.shape_idx]
+        self.x = GRID_WIDTH // 2 - len(self.shape[0]) // 2
+        self.y = 0
+    
+    def rotate(self):
+        # Transpose the matrix and reverse each row to rotate 90 degrees
+        rows = len(self.shape)
+        cols = len(self.shape[0])
+        rotated = [[0 for _ in range(rows)] for _ in range(cols)]
+        
+        for r in range(rows):
+            for c in range(cols):
+                rotated[c][rows - 1 - r] = self.shape[r][c]
+        
+        return rotated
+
+class Game:
+    def __init__(self):
+        self.grid = [[0 for _ in range(GRID_WIDTH)] for _ in range(GRID_HEIGHT)]
+        self.current_piece = Tetrimino()
+        self.next_piece = Tetrimino()
+        self.game_over = False
+        self.score = 0
+        self.level = 1
+        self.lines_cleared = 0
+        self.fall_speed = 0.5  # seconds
+        self.fall_time = 0
+    
+    def reset(self):
+        self.grid = [[0 for _ in range(GRID_WIDTH)] for _ in range(GRID_HEIGHT)]
+        self.current_piece = Tetrimino()
+        self.next_piece = Tetrimino()
+        self.game_over = False
+        self.score = 0
+        self.level = 1
+        self.lines_cleared = 0
+        self.fall_speed = 0.5
+    
+    def valid_position(self, shape, x, y):
+        for r, row in enumerate(shape):
+            for c, cell in enumerate(row):
+                if cell:
+                    if (x + c < 0 or x + c >= GRID_WIDTH or 
+                        y + r >= GRID_HEIGHT or 
+                        (y + r >= 0 and self.grid[y + r][x + c])):
+                        return False
+        return True
+    
+    def merge_piece(self):
+        for r, row in enumerate(self.current_piece.shape):
+            for c, cell in enumerate(row):
+                if cell and self.current_piece.y + r >= 0:
+                    self.grid[self.current_piece.y + r][self.current_piece.x + c] = self.current_piece.color
+    
+    def clear_lines(self):
+        lines_to_clear = []
+        for r in range(GRID_HEIGHT):
+            if all(self.grid[r]):
+                lines_to_clear.append(r)
+        
+        for line in lines_to_clear:
+            del self.grid[line]
+            self.grid.insert(0, [0 for _ in range(GRID_WIDTH)])
+        
+        if lines_to_clear:
+            self.lines_cleared += len(lines_to_clear)
+            self.score += [100, 300, 500, 800][min(len(lines_to_clear) - 1, 3)] * self.level
+            self.level = self.lines_cleared // 10 + 1
+            self.fall_speed = max(0.05, 0.5 - (self.level - 1) * 0.05)
+    
+    def new_piece(self):
+        self.current_piece = self.next_piece
+        self.next_piece = Tetrimino()
+        if not self.valid_position(self.current_piece.shape, self.current_piece.x, self.current_piece.y):
+            self.game_over = True
+    
+    def move_down(self):
+        if self.valid_position(self.current_piece.shape, self.current_piece.x, self.current_piece.y + 1):
+            self.current_piece.y += 1
+            return True
+        return False
+    
+    def move_sideways(self, dx):
+        if self.valid_position(self.current_piece.shape, self.current_piece.x + dx, self.current_piece.y):
+            self.current_piece.x += dx
+    
+    def rotate_piece(self):
+        rotated = self.current_piece.rotate()
+        if self.valid_position(rotated, self.current_piece.x, self.current_piece.y):
+            self.current_piece.shape = rotated
+
+def draw_grid(screen, grid):
+    for y, row in enumerate(grid):
+        for x, cell in enumerate(row):
+            if cell:
+                pygame.draw.rect(screen, cell, 
+                                (GAME_AREA_LEFT + x * BLOCK_SIZE, y * BLOCK_SIZE, 
+                                 BLOCK_SIZE, BLOCK_SIZE))
+                pygame.draw.rect(screen, WHITE, 
+                                (GAME_AREA_LEFT + x * BLOCK_SIZE, y * BLOCK_SIZE, 
+                                 BLOCK_SIZE, BLOCK_SIZE), 1)
+
+def draw_piece(screen, piece):
+    for y, row in enumerate(piece.shape):
+        for x, cell in enumerate(row):
+            if cell:
+                pygame.draw.rect(screen, piece.color, 
+                                (GAME_AREA_LEFT + (piece.x + x) * BLOCK_SIZE, 
+                                 (piece.y + y) * BLOCK_SIZE, 
+                                 BLOCK_SIZE, BLOCK_SIZE))
+                pygame.draw.rect(screen, WHITE, 
+                                (GAME_AREA_LEFT + (piece.x + x) * BLOCK_SIZE, 
+                                 (piece.y + y) * BLOCK_SIZE, 
+                                 BLOCK_SIZE, BLOCK_SIZE), 1)
+
+def draw_next_piece(screen, piece):
+    text = pygame.font.SysFont('comicsans', 20).render("Next:", True, WHITE)
+    screen.blit(text, (GAME_AREA_LEFT + GRID_WIDTH * BLOCK_SIZE + 10, 10))
+    
+    start_x = GAME_AREA_LEFT + GRID_WIDTH * BLOCK_SIZE + 30
+    start_y = 40
+    
+    for y, row in enumerate(piece.shape):
+        for x, cell in enumerate(row):
+            if cell:
+                pygame.draw.rect(screen, piece.color, 
+                                (start_x + x * BLOCK_SIZE, 
+                                 start_y + y * BLOCK_SIZE, 
+                                 BLOCK_SIZE, BLOCK_SIZE))
+                pygame.draw.rect(screen, WHITE, 
+                                (start_x + x * BLOCK_SIZE, 
+                                 start_y + y * BLOCK_SIZE, 
+                                 BLOCK_SIZE, BLOCK_SIZE), 1)
+
+def draw_score(screen, score, level, lines):
+    font = pygame.font.SysFont('comicsans', 20)
+    
+    score_text = font.render(f"Score: {score}", True, WHITE)
+    level_text = font.render(f"Level: {level}", True, WHITE)
+    lines_text = font.render(f"Lines: {lines}", True, WHITE)
+    
+    screen.blit(score_text, (GAME_AREA_LEFT + GRID_WIDTH * BLOCK_SIZE + 10, 120))
+    screen.blit(level_text, (GAME_AREA_LEFT + GRID_WIDTH * BLOCK_SIZE + 10, 150))
+    screen.blit(lines_text, (GAME_AREA_LEFT + GRID_WIDTH * BLOCK_SIZE + 10, 180))
+
+def draw_game_over(screen):
+    font = pygame.font.SysFont('comicsans', 40)
+    text = font.render("GAME OVER", True, (255, 0, 0))
+    screen.blit(text, (GAME_AREA_LEFT + GRID_WIDTH * BLOCK_SIZE // 2 - text.get_width() // 2, 
+                       SCREEN_HEIGHT // 2 - text.get_height() // 2))
+    
+    font = pygame.font.SysFont('comicsans', 20)
+    restart_text = font.render("Press R to restart", True, WHITE)
+    screen.blit(restart_text, (GAME_AREA_LEFT + GRID_WIDTH * BLOCK_SIZE // 2 - restart_text.get_width() // 2, 
+                              SCREEN_HEIGHT // 2 + 40))
+
+def main():
+    game = Game()
+    running = True
+    
+    while running:
+        screen.fill(BLACK)
+        
+        # Draw grid border
+        pygame.draw.rect(screen, GRAY, (GAME_AREA_LEFT - 1, 0, 
+                                       GRID_WIDTH * BLOCK_SIZE + 2, 
+                                       GRID_HEIGHT * BLOCK_SIZE + 2), 1)
+        
+        # Handle events
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            
+            if not game.game_over:
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_LEFT:
+                        game.move_sideways(-1)
+                    elif event.key == pygame.K_RIGHT:
+                        game.move_sideways(1)
+                    elif event.key == pygame.K_DOWN:
+                        game.move_down()
+                    elif event.key == pygame.K_UP:
+                        game.rotate_piece()
+                    elif event.key == pygame.K_SPACE:
+                        while game.move_down():
+                            pass
+            else:
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_r:
+                    game.reset()
+        
+        # Game logic
+        if not game.game_over:
+            current_time = pygame.time.get_ticks() / 1000
+            if current_time - game.fall_time > game.fall_speed:
+                if not game.move_down():
+                    game.merge_piece()
+                    game.clear_lines()
+                    game.new_piece()
+                game.fall_time = current_time
+        
+        # Drawing
+        draw_grid(screen, game.grid)
+        if not game.game_over:
+            draw_piece(screen, game.current_piece)
+        draw_next_piece(screen, game.next_piece)
+        draw_score(screen, game.score, game.level, game.lines_cleared)
+        
+        if game.game_over:
+            draw_game_over(screen)
+        
+        pygame.display.update()
+        clock.tick(60)
+    
+    pygame.quit()
+
+if __name__ == "__main__":
+    main()
